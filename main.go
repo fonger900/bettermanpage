@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 var (
@@ -376,18 +377,65 @@ func max(a, b int) int {
 	return b
 }
 
+func getTerminalWidth() int {
+	width, _, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil || width <= 0 {
+		return 80
+	}
+	return width
+}
+
+func stripBackspaces(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		// Bold: b\bb or Underline: _\ba
+		// We want to skip the first character and the backspace, leaving the second.
+		if i+1 < len(s) && s[i+1] == '\b' {
+			i += 1
+			continue
+		}
+		if s[i] == '\b' {
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 func getManPage(page string) (string, error) {
+	width := getTerminalWidth()
+
+	// Set environment variables for consistent output
+	// MANPAGER=cat ensures man doesn't open its own pager
+	// MANWIDTH ensures the output fits the terminal width (mostly for man-db)
+	// LANG/LC_ALL ensure consistent encoding (UTF-8)
+	env := os.Environ()
+	env = append(env, "MANPAGER=cat")
+	env = append(env, fmt.Sprintf("MANWIDTH=%d", width))
+	env = append(env, "LANG=en_US.UTF-8")
+	env = append(env, "LC_ALL=en_US.UTF-8")
+
 	cmd := exec.Command("man", page)
+	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", err
+		// Try without environment if it fails, or maybe it's mandoc
+		cmd = exec.Command("man", "-Tutf8", "-O", fmt.Sprintf("width=%d", width), page)
+		output2, err2 := cmd.CombinedOutput()
+		if err2 == nil {
+			output = output2
+		} else {
+			return "", fmt.Errorf("man %s failed: %v", page, err)
+		}
 	}
 
+	// Try col -b first
 	colCmd := exec.Command("col", "-b")
 	colCmd.Stdin = strings.NewReader(string(output))
 	finalOutput, err := colCmd.Output()
 	if err != nil {
-		return string(output), nil
+		// Fallback to our own stripper if col is missing
+		return stripBackspaces(string(output)), nil
 	}
 
 	return string(finalOutput), nil
