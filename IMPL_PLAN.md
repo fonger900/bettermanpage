@@ -14,8 +14,8 @@ This document outlines the roadmap and technical specifications for enhancing th
 - **Theming:** Support custom color schemes (e.g., Catppuccin, Nord, Solarized).
 - **Aliases:** Add a command (`bman --alias`) to generate shell alias scripts for `.zshrc`/`.bashrc`.
 
-### Phase 7: External Integrations
-- **TLDR/Cheat.sh Overlay:** Press `e` to fetch and display concise examples from [tldr.sh](https://tldr.sh/) or [cheat.sh](https://cheat.sh/) for the current command.
+### Phase 7: External Integrations (Partially Implemented)
+- **TLDR Overlay [DONE]:** Press `e` to fetch and display concise examples from [tldr.sh](https://tldr.sh/).
 - **Cross-Page Links:** Make "SEE ALSO" references and command names selectable to jump to their respective man pages.
 
 ### Phase 8: Performance & Ecosystem

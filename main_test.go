@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -25,14 +26,24 @@ func TestHighlight(t *testing.T) {
 	highlighted := highlight(content)
 
 	if !testing.Short() {
-		// Just check if it contains some ANSI escape codes or stylized parts
-		// Since Render() adds ANSI, we check for \x1b
 		if !containsANSI(highlighted) {
 			t.Error("expected highlighted content to contain ANSI escape codes")
 		}
 	}
 }
 
+func TestHighlightTLDR(t *testing.T) {
+	content := "# ls\n> List directory contents.\n- List files one per line:\n`ls -1`"
+	highlighted := highlightTLDR(content)
+
+	if !strings.Contains(highlighted, "ls -1") {
+		t.Error("expected highlighted TLDR to contain original code")
+	}
+	if !strings.Contains(highlighted, "List directory contents.") {
+		t.Error("expected highlighted TLDR to contain description")
+	}
+}
+
 func containsANSI(s string) bool {
-	return len(s) > 0 && (s[0] == '\x1b' || len(s) > 10) // Simple check for this context
+	return len(s) > 0 && (strings.Contains(s, "\x1b[") || len(s) > 10)
 }

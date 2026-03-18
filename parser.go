@@ -12,6 +12,11 @@ var (
 	optionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	valueStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Italic(true)
 	commentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
+	tldrTitleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Underline(true)
+	tldrDescStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	tldrExampleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	tldrCodeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("111"))
 )
 
 func highlight(content string) string {
@@ -38,11 +43,9 @@ func highlight(content string) string {
 		}
 
 		// Apply highlighting to parts of the line
-		// Use a temporary string to avoid overlapping replacements
 		newLine := line
 
 		newLine = optionRegex.ReplaceAllStringFunc(newLine, func(match string) string {
-			// Extract prefix space if any
 			prefix := ""
 			if strings.HasPrefix(match, " ") {
 				prefix = " "
@@ -56,6 +59,29 @@ func highlight(content string) string {
 		})
 
 		highlighted[i] = newLine
+	}
+
+	return strings.Join(highlighted, "\n")
+}
+
+func highlightTLDR(content string) string {
+	lines := strings.Split(content, "\n")
+	highlighted := make([]string, len(lines))
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			highlighted[i] = tldrTitleStyle.Render(trimmed)
+		} else if strings.HasPrefix(trimmed, ">") {
+			highlighted[i] = tldrDescStyle.Render(trimmed)
+		} else if strings.HasPrefix(trimmed, "-") {
+			highlighted[i] = tldrExampleStyle.Render(trimmed)
+		} else if strings.HasPrefix(trimmed, "`") && strings.HasSuffix(trimmed, "`") {
+			code := trimmed[1 : len(trimmed)-1]
+			highlighted[i] = "  " + tldrCodeStyle.Render(code)
+		} else {
+			highlighted[i] = trimmed
+		}
 	}
 
 	return strings.Join(highlighted, "\n")

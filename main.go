@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -31,7 +33,18 @@ var (
 			Padding(0, 1)
 
 	tocSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("211")).Bold(true)
+
+	overlayStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(1, 2).
+			Background(lipgloss.Color("235"))
 )
+
+type tldrMsg struct {
+	content string
+	err     error
+}
 
 type model struct {
 	content     string
@@ -48,10 +61,40 @@ type model struct {
 	matchIndex  int
 	width       int
 	height      int
+	showTLDR    bool
+	tldrContent string
+	tldrLoading bool
 }
 
 func (m model) Init() tea.Cmd {
 	return nil
+}
+
+func fetchTLDR(page string) tea.Cmd {
+	return func() tea.Msg {
+		// Try common first
+		url := fmt.Sprintf("https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/common/%s.md", page)
+		resp, err := http.Get(url)
+		if err != nil || resp.StatusCode != 200 {
+			// Try linux if common fails
+			url = fmt.Sprintf("https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/linux/%s.md", page)
+			resp, err = http.Get(url)
+			if err != nil || resp.StatusCode != 200 {
+				// Try osx
+				url = fmt.Sprintf("https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/osx/%s.md", page)
+				resp, err = http.Get(url)
+				if err != nil || resp.StatusCode != 200 {
+					return tldrMsg{err: fmt.Errorf("could not fetch TLDR for %s", page)}
+				}
+			}
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return tldrMsg{err: err}
+		}
+		return tldrMsg{content: string(body)}
+	}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -61,6 +104,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case tldrMsg:
+		m.tldrLoading = false
+		if msg.err != nil {
+			m.tldrContent = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(msg.err.Error())
+		} else {
+			m.tldrContent = highlightTLDR(msg.content)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.showSearch {
 			if msg.String() == "enter" {
@@ -77,6 +129,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.showTLDR {
+			if msg.String() == "esc" || msg.String() == "e" || msg.String() == "q" {
+				m.showTLDR = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
@@ -88,6 +148,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searchInput.Focus()
 			m.searchInput.SetValue("")
 			return m, nil
+		case "e":
+			m.showTLDR = true
+			m.tldrLoading = true
+			m.tldrContent = ""
+			return m, fetchTLDR(os.Args[1])
 		case "n":
 			m.nextMatch()
 		case "N":
@@ -190,12 +255,40 @@ func (m model) View() string {
 		mainContent = lipgloss.JoinHorizontal(lipgloss.Top, m.tocView(), mainContent)
 	}
 
+	header := m.headerView()
 	footer := m.footerView()
 	if m.showSearch {
 		footer = "Search: " + m.searchInput.View()
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), mainContent, footer)
+	view := fmt.Sprintf("%s\n%s\n%s", header, mainContent, footer)
+
+	if m.showTLDR {
+		return m.renderTLDR()
+	}
+
+	return view
+}
+
+func (m model) renderTLDR() string {
+	content := m.tldrContent
+	if m.tldrLoading {
+		content = "Loading TLDR..."
+	}
+
+	w := m.width * 80 / 100
+	h := m.height * 80 / 100
+	if w > 80 {
+		w = 80
+	}
+
+	style := overlayStyle.Width(w).Height(h)
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		style.Render(content),
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("235")),
+	)
 }
 
 func (m model) tocView() string {
@@ -228,7 +321,7 @@ func (m model) headerView() string {
 
 func (m model) footerView() string {
 	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
-	help := " [Tab: TOC | /: Search | n/N: Nav | q: Quit]"
+	help := " [Tab: TOC | /: Search | e: TLDR | q: Quit]"
 	lineCount := m.width - lipgloss.Width(info) - lipgloss.Width(help)
 	line := strings.Repeat("─", max(0, lineCount))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, help, info)
