@@ -23,7 +23,7 @@ func TestParseSections(t *testing.T) {
 
 func TestHighlight(t *testing.T) {
 	content := "SYNOPSIS\n  ls -l [FILE]"
-	highlighted := highlight(content)
+	highlighted := highlight(content, "ls", 1)
 
 	if !testing.Short() {
 		if !containsANSI(highlighted) {

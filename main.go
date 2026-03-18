@@ -211,9 +211,19 @@ func (m *model) updateLayout() {
 	}
 }
 
+func (m *model) updateHighlight() {
+	var currentMatchLine int = -1
+	if len(m.lastMatches) > 0 {
+		currentMatchLine = m.lastMatches[m.matchIndex]
+	}
+	m.highlighted = highlight(m.content, m.searchTerm, currentMatchLine)
+	m.viewport.SetContent(m.highlighted)
+}
+
 func (m *model) searchContent() {
 	if m.searchTerm == "" {
 		m.lastMatches = nil
+		m.updateHighlight()
 		return
 	}
 	m.lastMatches = nil
@@ -227,6 +237,7 @@ func (m *model) searchContent() {
 		m.matchIndex = 0
 		m.viewport.SetYOffset(m.lastMatches[0])
 	}
+	m.updateHighlight()
 }
 
 func (m *model) nextMatch() {
@@ -235,6 +246,7 @@ func (m *model) nextMatch() {
 	}
 	m.matchIndex = (m.matchIndex + 1) % len(m.lastMatches)
 	m.viewport.SetYOffset(m.lastMatches[m.matchIndex])
+	m.updateHighlight()
 }
 
 func (m *model) prevMatch() {
@@ -243,6 +255,7 @@ func (m *model) prevMatch() {
 	}
 	m.matchIndex = (m.matchIndex - 1 + len(m.lastMatches)) % len(m.lastMatches)
 	m.viewport.SetYOffset(m.lastMatches[m.matchIndex])
+	m.updateHighlight()
 }
 
 func (m model) getCurrentSection() string {
@@ -400,7 +413,7 @@ func main() {
 
 	m := model{
 		content:     content,
-		highlighted: highlight(content),
+		highlighted: highlight(content, "", -1),
 		sections:    parseSections(content),
 		searchInput: ti,
 	}
