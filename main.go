@@ -245,6 +245,22 @@ func (m *model) prevMatch() {
 	m.viewport.SetYOffset(m.lastMatches[m.matchIndex])
 }
 
+func (m model) getCurrentSection() string {
+	if len(m.sections) == 0 {
+		return ""
+	}
+	y := m.viewport.YOffset
+	current := m.sections[0].Name
+	for _, s := range m.sections {
+		if y >= s.Start {
+			current = s.Name
+		} else {
+			break
+		}
+	}
+	return current
+}
+
 func (m model) View() string {
 	if !m.ready {
 		return "\n  Initializing..."
@@ -257,9 +273,6 @@ func (m model) View() string {
 
 	header := m.headerView()
 	footer := m.footerView()
-	if m.showSearch {
-		footer = "Search: " + m.searchInput.View()
-	}
 
 	view := fmt.Sprintf("%s\n%s\n%s", header, mainContent, footer)
 
@@ -310,21 +323,37 @@ func (m model) tocView() string {
 
 func (m model) headerView() string {
 	title := titleStyle.Render("BetterManPage")
-	info := ""
+	page := ""
 	if len(os.Args) > 1 {
-		info = " [" + os.Args[1] + "]"
+		page = os.Args[1]
 	}
-	lineCount := m.width - lipgloss.Width(title) - lipgloss.Width(info)
+
+	section := m.getCurrentSection()
+	breadcrumb := ""
+	if page != "" {
+		breadcrumb = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(fmt.Sprintf(" %s > %s", page, section))
+	}
+
+	lineCount := m.width - lipgloss.Width(title) - lipgloss.Width(breadcrumb)
 	line := strings.Repeat("─", max(0, lineCount))
-	return lipgloss.JoinHorizontal(lipgloss.Center, title, line, info)
+	return lipgloss.JoinHorizontal(lipgloss.Center, title, line, breadcrumb)
 }
 
 func (m model) footerView() string {
 	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
-	help := " [Tab: TOC | /: Search | e: TLDR | q: Quit]"
-	lineCount := m.width - lipgloss.Width(info) - lipgloss.Width(help)
+
+	var status string
+	if m.showSearch {
+		status = " Search: " + m.searchInput.View()
+	} else if len(m.lastMatches) > 0 {
+		status = fmt.Sprintf(" Search: [%d/%d] %s ", m.matchIndex+1, len(m.lastMatches), m.searchTerm)
+	} else {
+		status = " [Tab: TOC | /: Search | e: TLDR | q: Quit]"
+	}
+
+	lineCount := m.width - lipgloss.Width(info) - lipgloss.Width(status)
 	line := strings.Repeat("─", max(0, lineCount))
-	return lipgloss.JoinHorizontal(lipgloss.Center, line, help, info)
+	return lipgloss.JoinHorizontal(lipgloss.Center, line, status, info)
 }
 
 func max(a, b int) int {
