@@ -24,20 +24,31 @@ var (
 	// Built-in roff styles
 	boldStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
 	underlineStyle = lipgloss.NewStyle().Underline(true).Foreground(Sky)
+
+	// Advanced styles
+	pathStyle    = lipgloss.NewStyle().Foreground(Sapphire).Underline(true)
+	urlStyle     = lipgloss.NewStyle().Foreground(Sky).Underline(true)
+	exampleStyle = lipgloss.NewStyle().Foreground(Lavender)
+	stringStyle  = lipgloss.NewStyle().Foreground(Green).Italic(true)
 )
 
 type Cell struct {
 	Char      rune
 	Bold      bool
 	Underline bool
+	Style     lipgloss.Style // Custom style override
 }
 
 func highlight(rawContent string, searchTerm string, currentMatchLine int) string {
 	lines := strings.Split(rawContent, "\n")
 	highlightedLines := make([]string, len(lines))
 
-	// Regex for extra highlighting (though we'll use formatting info mostly)
+	// Pre-compile regexes for performance
 	optionRegex := regexp.MustCompile(`(\s|^)(-[a-zA-Z0-9-]|--[a-zA-Z0-9-]+)`)
+	pathRegex := regexp.MustCompile(`(/[a-zA-Z0-9._-]+)+`)
+	urlRegex := regexp.MustCompile(`https?://[^\s)\]]+`)
+	valueRegex := regexp.MustCompile(`(<[^>]+>|\[[^\]]+\]|\b[A-Z_][A-Z_]{2,}\b)`)
+	stringRegex := regexp.MustCompile(`"([^"]+)"|'([^']+)'`)
 
 	var searchRegex *regexp.Regexp
 	if searchTerm != "" {
@@ -48,13 +59,17 @@ func highlight(rawContent string, searchTerm string, currentMatchLine int) strin
 		cells := parseFormattedLine(rawLine)
 		plain := cellsToPlain(cells)
 
-		// 1. Identify Sections (Headers are usually all caps at start)
+		// 1. Identify Sections
 		isHeader := isHeaderLine(plain)
 
-		// 2. Identify Options using Regex on plain text
-		optionMatches := optionRegex.FindAllStringIndex(plain, -1)
+		// 2. Multi-pass semantic highlighting on plain text
+		applyRegexStyle(cells, pathRegex, pathStyle)
+		applyRegexStyle(cells, urlRegex, urlStyle)
+		applyRegexStyle(cells, optionRegex, optionStyle)
+		applyRegexStyle(cells, valueRegex, valueStyle)
+		applyRegexStyle(cells, stringRegex, stringStyle)
 
-		// 3. Identify Search matches
+		// 3. Search matches
 		var searchMatches [][]int
 		if searchRegex != nil {
 			searchMatches = searchRegex.FindAllStringIndex(plain, -1)
@@ -63,9 +78,9 @@ func highlight(rawContent string, searchTerm string, currentMatchLine int) strin
 		// Build the final styled line
 		var b strings.Builder
 		for j, cell := range cells {
-			style := lipgloss.NewStyle()
+			style := cell.Style
 
-			// Apply standard troff styles
+			// Apply troff styles if not already overridden by semantic style
 			if cell.Bold {
 				style = style.Bold(true)
 			}
@@ -73,16 +88,8 @@ func highlight(rawContent string, searchTerm string, currentMatchLine int) strin
 				style = style.Underline(true)
 			}
 
-			// Apply Header styling
 			if isHeader {
 				style = headerStyle
-			}
-
-			// Apply Option styling (if matches regex)
-			for _, m := range optionMatches {
-				if j >= m[0] && j < m[1] {
-					style = optionStyle
-				}
 			}
 
 			// Apply Search styling (last override)
@@ -104,11 +111,41 @@ func highlight(rawContent string, searchTerm string, currentMatchLine int) strin
 	return strings.Join(highlightedLines, "\n")
 }
 
+func applyRegexStyle(cells []Cell, re *regexp.Regexp, style lipgloss.Style) {
+	plain := cellsToPlain(cells)
+	matches := re.FindAllStringIndex(plain, -1)
+
+	// Create a map from byte index to rune index
+	byteToRune := make(map[int]int)
+	byteIdx := 0
+	for runeIdx, r := range []rune(plain) {
+		byteToRune[byteIdx] = runeIdx
+		byteIdx += len(string(r))
+	}
+	byteToRune[byteIdx] = len(cells) // End boundary
+
+	for _, m := range matches {
+		startRune, startOk := byteToRune[m[0]]
+		endRune, endOk := byteToRune[m[1]]
+
+		if startOk && endOk {
+			for i := startRune; i < endRune; i++ {
+				// Special handling for patterns that might have a leading space (like options)
+				if i == startRune && plain[i] == ' ' {
+					continue
+				}
+				if i < len(cells) {
+					cells[i].Style = style
+				}
+			}
+		}
+	}
+}
+
 func parseFormattedLine(line string) []Cell {
 	var cells []Cell
 	runes := []rune(line)
 	for i := 0; i < len(runes); i++ {
-		// Handle backspace formatting: c\bc (Bold) or _\bc (Underline)
 		if i+2 < len(runes) && runes[i+1] == '\b' {
 			char := runes[i+2]
 			if runes[i] == '_' {
@@ -116,13 +153,11 @@ func parseFormattedLine(line string) []Cell {
 			} else if runes[i] == char {
 				cells = append(cells, Cell{Char: char, Bold: true})
 			} else {
-				// Unexpected combination, just treat as char
 				cells = append(cells, Cell{Char: char})
 			}
 			i += 2
 			continue
 		}
-		// Skip solo backspaces if they somehow occur
 		if runes[i] == '\b' {
 			continue
 		}
@@ -144,7 +179,6 @@ func isHeaderLine(line string) bool {
 	if trimmed == "" {
 		return false
 	}
-	// Simplified header detection: Starts at col 0 and is all caps/symbols
 	headerRegex := regexp.MustCompile(`^[A-Z][A-Z\s\(\)0-9_-]+$`)
 	return headerRegex.MatchString(line)
 }
