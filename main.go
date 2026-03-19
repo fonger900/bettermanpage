@@ -76,6 +76,7 @@ type model struct {
 	showTLDR    bool
 	tldrContent string
 	tldrLoading bool
+	lastKey     string
 }
 
 func (m model) Init() tea.Cmd {
@@ -183,6 +184,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			m.viewport.LineUp(1)
 		case "down", "j":
 			if m.showTOC {
 				if m.tocIndex < len(m.sections)-1 {
@@ -190,12 +192,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			m.viewport.LineDown(1)
+		case "g":
+			if m.lastKey == "g" {
+				m.viewport.GotoTop()
+				m.lastKey = ""
+			} else {
+				m.lastKey = "g"
+			}
+			m.updateHighlight()
+			return m, nil
+		case "G":
+			m.viewport.GotoBottom()
+		case "d":
+			m.viewport.HalfPageDown()
+		case "u":
+			m.viewport.HalfPageUp()
+		case "ctrl+f", "pgdown":
+			m.viewport.PageDown()
+		case "ctrl+b", "pgup":
+			m.viewport.PageUp()
 		case "enter":
 			if m.showTOC && len(m.sections) > 0 {
 				m.viewport.SetYOffset(m.sections[m.tocIndex].Start)
 				return m, nil
 			}
 		}
+
+		if msg.String() != "g" {
+			m.lastKey = ""
+		}
+		m.updateHighlight()
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

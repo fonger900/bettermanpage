@@ -4,11 +4,11 @@ This document outlines the roadmap and technical specifications for enhancing th
 
 ## 1. Roadmap
 
-### Phase 5: Enhanced Navigation & Vim Parity
+### Phase 5: Enhanced Navigation & Vim Parity (Implemented)
+- **Vim Keybindings [DONE]:** Support `gg`, `G`, `d`, `u`, `ctrl+f`, `ctrl+b`.
+- **Search Enhancements [DONE]:** Show match count (e.g., `[1/5]`) and highlight current match in the viewport.
+- **Section Breadcrumbs [DONE]:** Display current section name at the top of the viewport during scroll.
 
-- **Vim Keybindings:** Support `gg`, `G`, `d`, `u`, `ctrl+f`, `ctrl+b`.
-- **Search Enhancements:** Show match count (e.g., `[1/5]`) and highlight current match in the viewport.
-- **Section Breadcrumbs:** Display current section name at the top of the viewport during scroll.
 
 ### Phase 6: Customization & Configuration
 
