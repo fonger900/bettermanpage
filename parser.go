@@ -8,108 +8,170 @@ import (
 )
 
 var (
-	headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	optionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	valueStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Italic(true)
-	commentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	headerStyle  = lipgloss.NewStyle().Foreground(Pink).Bold(true)
+	optionStyle  = lipgloss.NewStyle().Foreground(Green)
+	valueStyle   = lipgloss.NewStyle().Foreground(Peach).Italic(true)
+	commentStyle = lipgloss.NewStyle().Foreground(Subtext)
 
-	tldrTitleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Underline(true)
-	tldrDescStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
-	tldrExampleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	tldrCodeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("111"))
+	tldrTitleStyle   = lipgloss.NewStyle().Foreground(Pink).Bold(true).Underline(true)
+	tldrDescStyle    = lipgloss.NewStyle().Foreground(Subtext)
+	tldrExampleStyle = lipgloss.NewStyle().Foreground(Green)
+	tldrCodeStyle    = lipgloss.NewStyle().Foreground(Sapphire)
 
-	searchStyle        = lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(lipgloss.Color("255"))
-	currentSearchStyle = lipgloss.NewStyle().Background(lipgloss.Color("205")).Foreground(lipgloss.Color("255")).Bold(true)
+	searchStyle        = lipgloss.NewStyle().Background(Overlay).Foreground(Sky)
+	currentSearchStyle = lipgloss.NewStyle().Background(Pink).Foreground(Base).Bold(true)
+
+	// Built-in roff styles
+	boldStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
+	underlineStyle = lipgloss.NewStyle().Underline(true).Foreground(Sky)
 )
 
-func highlight(content string, searchTerm string, currentMatchLine int) string {
-	lines := strings.Split(content, "\n")
-	highlighted := make([]string, len(lines))
+type Cell struct {
+	Char      rune
+	Bold      bool
+	Underline bool
+}
 
-	// Regex for headers (all caps, starts at col 0, at least 2 chars)
-	headerRegex := regexp.MustCompile(`^[A-Z][A-Z\s\(\)0-9_-]+$`)
-	// Regex for options (-a, --all, -abc)
+func highlight(rawContent string, searchTerm string, currentMatchLine int) string {
+	lines := strings.Split(rawContent, "\n")
+	highlightedLines := make([]string, len(lines))
+
+	// Regex for extra highlighting (though we'll use formatting info mostly)
 	optionRegex := regexp.MustCompile(`(\s|^)(-[a-zA-Z0-9-]|--[a-zA-Z0-9-]+)`)
-	// Regex for values/placeholders (<value>, [FILE], VARIABLE_NAME)
-	valueRegex := regexp.MustCompile(`(<[^>]+>|\[[^\]]+\]|\b[A-Z_][A-Z_]{2,}\b)`)
 
 	var searchRegex *regexp.Regexp
 	if searchTerm != "" {
 		searchRegex = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(searchTerm))
 	}
 
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			highlighted[i] = ""
-			continue
-		}
+	for i, rawLine := range lines {
+		cells := parseFormattedLine(rawLine)
+		plain := cellsToPlain(cells)
 
-		var newLine string
-		if headerRegex.MatchString(line) {
-			newLine = headerStyle.Render(line)
-		} else {
-			// Apply highlighting to parts of the line
-			newLine = line
+		// 1. Identify Sections (Headers are usually all caps at start)
+		isHeader := isHeaderLine(plain)
 
-			newLine = optionRegex.ReplaceAllStringFunc(newLine, func(match string) string {
-				prefix := ""
-				if strings.HasPrefix(match, " ") {
-					prefix = " "
-					match = match[1:]
-				}
-				return prefix + optionStyle.Render(match)
-			})
+		// 2. Identify Options using Regex on plain text
+		optionMatches := optionRegex.FindAllStringIndex(plain, -1)
 
-			newLine = valueRegex.ReplaceAllStringFunc(newLine, func(match string) string {
-				return valueStyle.Render(match)
-			})
-		}
-
-		// Apply search highlighting last
+		// 3. Identify Search matches
+		var searchMatches [][]int
 		if searchRegex != nil {
-			// Split by ANSI sequences to avoid matching inside them
-			parts := splitByANSI(newLine)
-			for j, part := range parts {
-				if !strings.HasPrefix(part, "\x1b[") {
-					parts[j] = searchRegex.ReplaceAllStringFunc(part, func(match string) string {
-						style := searchStyle
-						if i == currentMatchLine {
-							style = currentSearchStyle
-						}
-						return style.Render(match)
-					})
+			searchMatches = searchRegex.FindAllStringIndex(plain, -1)
+		}
+
+		// Build the final styled line
+		var b strings.Builder
+		for j, cell := range cells {
+			style := lipgloss.NewStyle()
+
+			// Apply standard troff styles
+			if cell.Bold {
+				style = style.Bold(true)
+			}
+			if cell.Underline {
+				style = style.Underline(true)
+			}
+
+			// Apply Header styling
+			if isHeader {
+				style = headerStyle
+			}
+
+			// Apply Option styling (if matches regex)
+			for _, m := range optionMatches {
+				if j >= m[0] && j < m[1] {
+					style = optionStyle
 				}
 			}
-			newLine = strings.Join(parts, "")
-		}
 
-		highlighted[i] = newLine
+			// Apply Search styling (last override)
+			for _, m := range searchMatches {
+				if j >= m[0] && j < m[1] {
+					if i == currentMatchLine {
+						style = currentSearchStyle
+					} else {
+						style = searchStyle
+					}
+				}
+			}
+
+			b.WriteString(style.Render(string(cell.Char)))
+		}
+		highlightedLines[i] = b.String()
 	}
 
-	return strings.Join(highlighted, "\n")
+	return strings.Join(highlightedLines, "\n")
 }
 
-func splitByANSI(s string) []string {
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	matches := ansiRegex.FindAllStringIndex(s, -1)
-	if matches == nil {
-		return []string{s}
-	}
-
-	var parts []string
-	lastPos := 0
-	for _, m := range matches {
-		if m[0] > lastPos {
-			parts = append(parts, s[lastPos:m[0]])
+func parseFormattedLine(line string) []Cell {
+	var cells []Cell
+	runes := []rune(line)
+	for i := 0; i < len(runes); i++ {
+		// Handle backspace formatting: c\bc (Bold) or _\bc (Underline)
+		if i+2 < len(runes) && runes[i+1] == '\b' {
+			char := runes[i+2]
+			if runes[i] == '_' {
+				cells = append(cells, Cell{Char: char, Underline: true})
+			} else if runes[i] == char {
+				cells = append(cells, Cell{Char: char, Bold: true})
+			} else {
+				// Unexpected combination, just treat as char
+				cells = append(cells, Cell{Char: char})
+			}
+			i += 2
+			continue
 		}
-		parts = append(parts, s[m[0]:m[1]])
-		lastPos = m[1]
+		// Skip solo backspaces if they somehow occur
+		if runes[i] == '\b' {
+			continue
+		}
+		cells = append(cells, Cell{Char: runes[i]})
 	}
-	if lastPos < len(s) {
-		parts = append(parts, s[lastPos:])
+	return cells
+}
+
+func cellsToPlain(cells []Cell) string {
+	var b strings.Builder
+	for _, c := range cells {
+		b.WriteRune(c.Char)
 	}
-	return parts
+	return b.String()
+}
+
+func isHeaderLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	// Simplified header detection: Starts at col 0 and is all caps/symbols
+	headerRegex := regexp.MustCompile(`^[A-Z][A-Z\s\(\)0-9_-]+$`)
+	return headerRegex.MatchString(line)
+}
+
+type Section struct {
+	Name  string
+	Start int
+}
+
+func parseSections(rawContent string) []Section {
+	lines := strings.Split(rawContent, "\n")
+	var sections []Section
+
+	for i, rawLine := range lines {
+		cells := parseFormattedLine(rawLine)
+		plain := cellsToPlain(cells)
+		if isHeaderLine(plain) {
+			name := strings.TrimSpace(plain)
+			if name != "" {
+				sections = append(sections, Section{
+					Name:  name,
+					Start: i,
+				})
+			}
+		}
+	}
+	return sections
 }
 
 func highlightTLDR(content string) string {
@@ -135,26 +197,24 @@ func highlightTLDR(content string) string {
 	return strings.Join(highlighted, "\n")
 }
 
-type Section struct {
-	Name  string
-	Start int
-}
-
-func parseSections(content string) []Section {
-	lines := strings.Split(content, "\n")
-	headerRegex := regexp.MustCompile(`^[A-Z][A-Z\s\(\)0-9_-]+$`)
-	var sections []Section
-
-	for i, line := range lines {
-		if headerRegex.MatchString(line) {
-			name := strings.TrimSpace(line)
-			if name != "" {
-				sections = append(sections, Section{
-					Name:  name,
-					Start: i,
-				})
-			}
-		}
+func splitByANSI(s string) []string {
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	matches := ansiRegex.FindAllStringIndex(s, -1)
+	if matches == nil {
+		return []string{s}
 	}
-	return sections
+
+	var parts []string
+	lastPos := 0
+	for _, m := range matches {
+		if m[0] > lastPos {
+			parts = append(parts, s[lastPos:m[0]])
+		}
+		parts = append(parts, s[m[0]:m[1]])
+		lastPos = m[1]
+	}
+	if lastPos < len(s) {
+		parts = append(parts, s[lastPos:])
+	}
+	return parts
 }

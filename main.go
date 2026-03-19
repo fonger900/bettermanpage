@@ -19,27 +19,38 @@ var (
 	titleStyle = func() lipgloss.Style {
 		b := lipgloss.RoundedBorder()
 		b.Right = "├"
-		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1).Foreground(lipgloss.Color("205")).Bold(true)
+		return lipgloss.NewStyle().
+			BorderStyle(b).
+			Padding(0, 1).
+			Foreground(Mauve).
+			Bold(true)
 	}()
 
 	infoStyle = func() lipgloss.Style {
 		b := lipgloss.RoundedBorder()
 		b.Left = "┤"
-		return titleStyle.BorderStyle(b)
+		return titleStyle.Copy().BorderStyle(b)
 	}()
 
 	tocStyle = lipgloss.NewStyle().
 			Width(25).
 			Border(lipgloss.NormalBorder(), false, true, false, false).
-			Padding(0, 1)
+			BorderForeground(Subtext).
+			Padding(0, 1).
+			Foreground(Text)
 
-	tocSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("211")).Bold(true)
+	tocSelectedStyle = lipgloss.NewStyle().
+				Foreground(Base).
+				Background(Blue).
+				Bold(true).
+				Padding(0, 1)
 
 	overlayStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
+			BorderForeground(Pink).
 			Padding(1, 2).
-			Background(lipgloss.Color("235"))
+			Background(Base).
+			Foreground(Text)
 )
 
 type tldrMsg struct {
@@ -300,35 +311,52 @@ func (m model) View() string {
 func (m model) renderTLDR() string {
 	content := m.tldrContent
 	if m.tldrLoading {
-		content = "Loading TLDR..."
+		loadingStyle := lipgloss.NewStyle().Foreground(Mauve).Bold(true).Italic(true)
+		content = "\n\n  " + loadingStyle.Render("Searching tldr-pages...")
 	}
 
 	w := m.width * 80 / 100
 	h := m.height * 80 / 100
-	if w > 80 {
-		w = 80
+	if w > 100 {
+		w = 100
+	}
+	if h > 30 {
+		h = 30
 	}
 
-	style := overlayStyle.Width(w).Height(h)
+	title := lipgloss.NewStyle().
+		Background(Pink).
+		Foreground(Base).
+		Bold(true).
+		Padding(0, 1).
+		Render(" TLDR Cheat Sheet ")
+
+	style := overlayStyle.
+		Width(w).
+		Height(h).
+		Align(lipgloss.Left, lipgloss.Top)
+
+	body := style.Render(content)
+	
+	// Place the title on top of the border
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
-		style.Render(content),
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceForeground(lipgloss.Color("235")),
+		lipgloss.JoinVertical(lipgloss.Left, title, body),
 	)
 }
 
 func (m model) tocView() string {
 	var toc strings.Builder
+	unselectedStyle := lipgloss.NewStyle().Foreground(Subtext)
 	for i, section := range m.sections {
 		name := section.Name
 		if len(name) > 22 {
 			name = name[:19] + "..."
 		}
 		if i == m.tocIndex {
-			toc.WriteString(tocSelectedStyle.Render("> " + name))
+			toc.WriteString(tocSelectedStyle.Render(name))
 		} else {
-			toc.WriteString("  " + name)
+			toc.WriteString("  " + unselectedStyle.Render(name))
 		}
 		toc.WriteString("\n")
 	}
@@ -345,28 +373,39 @@ func (m model) headerView() string {
 	section := m.getCurrentSection()
 	breadcrumb := ""
 	if page != "" {
-		breadcrumb = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(fmt.Sprintf(" %s > %s", page, section))
+		pStyle := lipgloss.NewStyle().Foreground(Pink).Bold(true)
+		sStyle := lipgloss.NewStyle().Foreground(Peach)
+		sepStyle := lipgloss.NewStyle().Foreground(Subtext)
+		breadcrumb = fmt.Sprintf(" %s %s %s", pStyle.Render(page), sepStyle.Render(">"), sStyle.Render(section))
 	}
 
 	lineCount := m.width - lipgloss.Width(title) - lipgloss.Width(breadcrumb)
-	line := strings.Repeat("─", max(0, lineCount))
+	line := lipgloss.NewStyle().Foreground(Subtext).Render(strings.Repeat("─", max(0, lineCount)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line, breadcrumb)
 }
 
 func (m model) footerView() string {
-	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	percentStyle := lipgloss.NewStyle().Foreground(Mauve).Bold(true)
+	info := infoStyle.Render(percentStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100)))
 
 	var status string
+	statusStyle := lipgloss.NewStyle().Foreground(Green)
+	highlightStatusStyle := lipgloss.NewStyle().Foreground(Pink).Bold(true)
+
 	if m.showSearch {
 		status = " Search: " + m.searchInput.View()
 	} else if len(m.lastMatches) > 0 {
-		status = fmt.Sprintf(" Search: [%d/%d] %s ", m.matchIndex+1, len(m.lastMatches), m.searchTerm)
+		status = fmt.Sprintf(" Search: [%s/%s] %s ",
+			highlightStatusStyle.Render(fmt.Sprint(m.matchIndex+1)),
+			highlightStatusStyle.Render(fmt.Sprint(len(m.lastMatches))),
+			statusStyle.Render(m.searchTerm))
 	} else {
-		status = " [Tab: TOC | /: Search | e: TLDR | q: Quit]"
+		helpStyle := lipgloss.NewStyle().Foreground(Subtext)
+		status = helpStyle.Render(" [Tab: TOC | /: Search | e: TLDR | q: Quit]")
 	}
 
 	lineCount := m.width - lipgloss.Width(info) - lipgloss.Width(status)
-	line := strings.Repeat("─", max(0, lineCount))
+	line := lipgloss.NewStyle().Foreground(Subtext).Render(strings.Repeat("─", max(0, lineCount)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, status, info)
 }
 
@@ -385,33 +424,17 @@ func getTerminalWidth() int {
 	return width
 }
 
-func stripBackspaces(s string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		// Bold: b\bb or Underline: _\ba
-		// We want to skip the first character and the backspace, leaving the second.
-		if i+1 < len(s) && s[i+1] == '\b' {
-			i += 1
-			continue
-		}
-		if s[i] == '\b' {
-			continue
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}
-
 func getManPage(page string) (string, error) {
 	width := getTerminalWidth()
 
 	// Set environment variables for consistent output
 	// MANPAGER=cat ensures man doesn't open its own pager
-	// MANWIDTH ensures the output fits the terminal width (mostly for man-db)
-	// LANG/LC_ALL ensure consistent encoding (UTF-8)
+	// MANWIDTH ensures the output fits the terminal width
+	// GROFF_NO_SGR=1 forces the use of backspaces for bold/underline instead of ANSI
 	env := os.Environ()
 	env = append(env, "MANPAGER=cat")
 	env = append(env, fmt.Sprintf("MANWIDTH=%d", width))
+	env = append(env, "GROFF_NO_SGR=1")
 	env = append(env, "LANG=en_US.UTF-8")
 	env = append(env, "LC_ALL=en_US.UTF-8")
 
@@ -419,7 +442,7 @@ func getManPage(page string) (string, error) {
 	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Try without environment if it fails, or maybe it's mandoc
+		// Fallback for mandoc
 		cmd = exec.Command("man", "-Tutf8", "-O", fmt.Sprintf("width=%d", width), page)
 		output2, err2 := cmd.CombinedOutput()
 		if err2 == nil {
@@ -429,16 +452,7 @@ func getManPage(page string) (string, error) {
 		}
 	}
 
-	// Try col -b first
-	colCmd := exec.Command("col", "-b")
-	colCmd.Stdin = strings.NewReader(string(output))
-	finalOutput, err := colCmd.Output()
-	if err != nil {
-		// Fallback to our own stripper if col is missing
-		return stripBackspaces(string(output)), nil
-	}
-
-	return string(finalOutput), nil
+	return string(output), nil
 }
 
 func main() {
