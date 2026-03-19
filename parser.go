@@ -45,7 +45,7 @@ func highlight(rawContent string, searchTerm string, currentMatchLine int) strin
 
 	// Pre-compile regexes for performance
 	optionRegex := regexp.MustCompile(`(\s|^)(-[a-zA-Z0-9-]|--[a-zA-Z0-9-]+)`)
-	pathRegex := regexp.MustCompile(`(/[a-zA-Z0-9._-]+)+`)
+	pathRegex := regexp.MustCompile(`\B/(?:[a-zA-Z0-9._-]+/?)*`)
 	urlRegex := regexp.MustCompile(`https?://[^\s)\]]+`)
 	valueRegex := regexp.MustCompile(`(<[^>]+>|\[[^\]]+\]|\b[A-Z_][A-Z_]{2,}\b)`)
 	stringRegex := regexp.MustCompile(`"([^"]+)"|'([^']+)'`)
