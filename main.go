@@ -150,8 +150,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "esc":
+			if m.showTOC {
+				m.showTOC = false
+				m.updateLayout()
+				return m, nil
+			}
+			return m, nil
 		case "tab":
 			m.showTOC = !m.showTOC
 			m.updateLayout()
